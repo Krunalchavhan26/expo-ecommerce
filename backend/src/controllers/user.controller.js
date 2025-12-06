@@ -15,6 +15,12 @@ export async function addAddress(req, res) {
 
     const user = req.user;
 
+    if (!fullName || !streetAddress || !city || !state || !zipCode) {
+      return res
+        .status(400)
+        .json({ message: "All address fields are required" });
+    }
+
     // if this is set as default, unset all other defaults
     if (isDefault) {
       user.addresses.forEach((address) => {
@@ -152,12 +158,10 @@ export async function removeFromWishlist(req, res) {
 
     user.wishlist.pull(productId);
     await user.save();
-    res
-      .status(200)
-      .json({
-        message: "Product removed from wishlist",
-        wishlist: user.wishlist,
-      });
+    res.status(200).json({
+      message: "Product removed from wishlist",
+      wishlist: user.wishlist,
+    });
   } catch (error) {
     console.error("Error removing from wishlist:", error);
     res.status(500).json({ message: "Failed to remove from wishlist" });
@@ -166,7 +170,8 @@ export async function removeFromWishlist(req, res) {
 
 export async function getWishlist(req, res) {
   try {
-    const user = req.user;
+    // Populate wishlist with product details
+    const user = await User.findById(req.user._id).populate("wishlist");
     res.status(200).json({ wishlist: user.wishlist });
   } catch (error) {
     console.error("Error fetching wishlist:", error);
