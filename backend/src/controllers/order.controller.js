@@ -11,20 +11,29 @@ export async function createOrder(req, res) {
       return res.status(400).json({ message: "No order items" });
     }
 
-    // validate products and stock
+    // Atomically reserve stock for all items
+    const stockUpdates = [];
     for (const item of orderItems) {
-      const product = await Product.findById(item.product._id);
-      if (!product) {
-        return res
-          .status(404)
-          .json({ message: `Product ${item.name} not found` });
+      const updated = await Product.findOneAndUpdate(
+        { _id: item.product._id, stock: { $gte: item.quantity } },
+        { $inc: { stock: -item.quantity } },
+        { new: true }
+      );
+      if (!updated) {
+        // Rollback previously decremented stock
+        for (const prev of stockUpdates) {
+          await Product.findByIdAndUpdate(prev.productId, {
+            $inc: { stock: prev.quantity },
+          });
+        }
+        return res.status(400).json({
+          message: `Product ${item.name} not found or insufficient stock`,
+        });
       }
-
-      if (product.stock < item.quantity) {
-        return res
-          .status(400)
-          .json({ message: `Insufficient stock for product ${product.name}` });
-      }
+      stockUpdates.push({
+        productId: item.product._id,
+        quantity: item.quantity,
+      });
     }
 
     const order = await Order.create({
@@ -35,13 +44,6 @@ export async function createOrder(req, res) {
       paymentResult,
       totalPrice,
     });
-
-    // update product stock
-    for (const item of orderItems) {
-      await Product.findByIdAndUpdate(item.product._id, {
-        $inc: { stock: -item.quantity },
-      });
-    }
 
     res.status(201).json({ message: "Order created successfully", order });
   } catch (error) {
@@ -58,7 +60,7 @@ export async function getUserOrders(req, res) {
 
     // check if each order has been reviewed
 
-    const orderWithReviewStatus = Promise.all(
+    const orderWithReviewStatus = await Promise.all(
       orders.map(async (order) => {
         const review = await Review.findOne({ order: order._id });
         return {
@@ -68,7 +70,7 @@ export async function getUserOrders(req, res) {
       })
     );
 
-    res.status(200).json({ orders: await orderWithReviewStatus });
+    res.status(200).json({ orders: orderWithReviewStatus });
   } catch (error) {
     console.error("Error fetching user orders:", error);
     res.status(500).json({ message: "Internal server error" });
