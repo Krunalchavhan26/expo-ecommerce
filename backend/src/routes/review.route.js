@@ -13,6 +13,6 @@ router.post("/", createReview);
 
 // we did not implement this functionality yet in mobile app - in the frontend
 // if in future we decide to implement it, we can use this route
-router.delete("/:id", deleteReview);
+router.delete("/:reviewId", deleteReview);
 
 export default router;
